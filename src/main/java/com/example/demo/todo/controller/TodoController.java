@@ -1,57 +1,122 @@
 package com.example.demo.todo.controller;
 
+import com.example.demo.todo.model.TodoItem;
+import com.example.demo.todo.repository.TodoRepository;
+import com.example.demo.todo.service.FileDAO;
+import com.example.demo.todo.service.TodoService;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.InputStreamResource;
+
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Optional;
 
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-
-import com.example.demo.todo.model.TodoItem;
-import com.example.demo.todo.repository.TodoRepository;
-
-
 @RestController
-@RequestMapping("/todos")
+@RequestMapping("/todo")
 public class TodoController {
 
-	private final TodoRepository repo;
+    @Autowired
+    private TodoService todoService;
 
-	public TodoController(TodoRepository repo){
-		this.repo = repo;
+
+	@Autowired
+	private FileDAO fileDAO;
+
+    @PostMapping
+    public ResponseEntity<TodoItem> createTodo(@RequestParam String text) {
+        TodoItem newItem = todoService.createTodo(text);
+        return ResponseEntity.status(HttpStatus.CREATED).body(newItem);
+    }
+
+    // ✅ Get all TodoItems
+    @GetMapping
+    public ResponseEntity<List<TodoItem>> getAllTodos() {
+        List<TodoItem> todos = todoService.getAllTodos();
+        return ResponseEntity.ok(todos);
+    }
+
+    // ✅ Get a TodoItem by ID
+    @GetMapping("/{id}")
+    public ResponseEntity<TodoItem> getTodoById(@PathVariable String id) {
+        return todoService.getTodoById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    // ✅ Update a TodoItem
+    @PutMapping("/{id}")
+    public ResponseEntity<TodoItem> updateTodo(@PathVariable String id, @RequestParam String text) {
+        return todoService.updateTodo(id, text)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    // ✅ Delete a TodoItem
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteTodo(@PathVariable String id) {
+        if (todoService.deleteTodo(id)) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    // ✅ Upload a file and link it to a TodoItem
+    @PostMapping("/{id}/upload")
+    public ResponseEntity<String> uploadFile(@PathVariable String id, @RequestParam("file") MultipartFile file) {
+        try (InputStream inputStream = file.getInputStream()) {
+            String fileName = id + "_" + file.getOriginalFilename();
+            String filePath = fileDAO.writeFile(inputStream, fileName);
+            todoService.attachFileToTodo(id, filePath);
+            return ResponseEntity.ok("File uploaded and linked successfully!");
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("File upload failed!");
+        }
+    }
+
+    // ✅ Download a file
+    @GetMapping("/{id}/download")
+	public ResponseEntity<InputStreamResource> downloadFile(@PathVariable String id) {
+		Optional<TodoItem> todoOpt = todoService.getTodoById(id);
+		if (todoOpt.isEmpty() || todoOpt.get().getFileName() == null) {
+			return ResponseEntity.notFound().build();
+		}
+
+		try {
+			InputStream fileStream = fileDAO.readFile(todoOpt.get().getFileName());
+			InputStreamResource resource = new InputStreamResource(fileStream);
+
+			HttpHeaders headers = new HttpHeaders();
+			headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + id + "_file");
+
+			return ResponseEntity.ok()
+					.headers(headers)
+					.body(resource);
+		} catch (IOException e) {
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+		}
 	}
 
-	@GetMapping()
-	List<TodoItem> findAll(@RequestParam (defaultValue = "1") int page,@RequestParam (defaultValue = "10") int size){
-		return repo.findAll(page, size);
-	} 
+    // ✅ Delete a file
+    @DeleteMapping("/{id}/delete-file")
+    public ResponseEntity<String> deleteFile(@PathVariable String id) {
+        Optional<TodoItem> todoOpt = todoService.getTodoById(id);
+        if (todoOpt.isEmpty() || todoOpt.get().getFileName() == null) {
+            return ResponseEntity.notFound().build();
+        }
 
-	@PostMapping()
-	TodoItem createRecord(@RequestParam String text){
-		TodoItem todo = new TodoItem(text);
-		return repo.createRecord(todo);
-		
-	}
-
-	@PostMapping("/{id}")
-	ResponseEntity<TodoItem> updateRecord(@PathVariable String id, @RequestParam String text){
-		Optional<TodoItem> todo = repo.updateRecord(id, text);
-		
-		return todo.isEmpty()?ResponseEntity.notFound().build() : ResponseEntity.ok(todo.get());
-	}
-
-	@DeleteMapping("/{id}")
-	void deleteRecord(@PathVariable String id){
-		repo.deleteRecord(id);
-	}
-
-
-
-
-
+        try {
+            fileDAO.deleteFile(todoOpt.get().getFileName());
+            todoService.removeFileFromTodo(id);
+            return ResponseEntity.ok("File deleted successfully!");
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error deleting file!");
+        }
+    }
 }

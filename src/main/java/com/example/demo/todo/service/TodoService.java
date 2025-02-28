@@ -28,18 +28,23 @@ public class TodoService {
         return todoRepository.findAll();
     }
 
-    // ✅ Get a TodoItem by ID
     public Optional<TodoItem> getTodoById(String id) {
+        if (id == null) {
+            throw new IllegalArgumentException("ID cannot be null");
+        }
         return todoRepository.findById(id);
     }
 
-    // ✅ Update a TodoItem
     public Optional<TodoItem> updateTodo(String id, String text) {
+        if (id == null) {
+            throw new IllegalArgumentException("ID cannot be null");
+        }
         return todoRepository.findById(id).map(todo -> {
             todo.setText(text);
             return todoRepository.save(todo);
         });
     }
+    
 
     // ✅ Set file path for a TodoItem
     @Transactional
@@ -59,8 +64,10 @@ public class TodoService {
         });
     }
 
-    // ✅ Soft delete a TodoItem (file is NOT deleted automatically)
     public boolean deleteTodo(String id) {
+        if (id == null) {
+            throw new IllegalArgumentException("ID cannot be null");
+        }
         return todoRepository.findById(id).map(todo -> {
             todo.setDeleted(true);
             todoRepository.save(todo);

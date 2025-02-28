@@ -32,8 +32,12 @@ public class TodoController {
     @PostMapping
     public ResponseEntity<TodoItem> createTodo(@RequestParam String text) {
         TodoItem newItem = todoService.createTodo(text);
+        if (newItem == null) {
+            throw new RuntimeException("Database unavailable");
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(newItem);
     }
+    
 
     // ✅ Get all TodoItems
     @GetMapping
@@ -47,16 +51,17 @@ public class TodoController {
     public ResponseEntity<TodoItem> getTodoById(@PathVariable String id) {
         return todoService.getTodoById(id)
                 .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElseThrow(() -> new RuntimeException("Database unavailable"));
     }
-
+    
     // ✅ Update a TodoItem
     @PutMapping("/{id}")
     public ResponseEntity<TodoItem> updateTodo(@PathVariable String id, @RequestParam String text) {
         return todoService.updateTodo(id, text)
                 .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElseThrow(() -> new RuntimeException("Database unavailable"));
     }
+    
 
     // ✅ Delete a TodoItem
     @DeleteMapping("/{id}")
@@ -64,8 +69,9 @@ public class TodoController {
         if (todoService.deleteTodo(id)) {
             return ResponseEntity.noContent().build();
         }
-        return ResponseEntity.notFound().build();
+        throw new RuntimeException("Database unavailable");
     }
+    
 
     // ✅ Upload a file and link it to a TodoItem
     @PostMapping("/{id}/upload")
